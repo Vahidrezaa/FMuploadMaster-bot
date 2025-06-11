@@ -194,9 +194,6 @@ class DatabaseManager:
                 VALUES (%s, %s, %s)
             ''', (category_id, name, str(created_by)))
             return True
-        except psycopg2.IntegrityError:
-            logger.warning(f"Category with name '{name}' already exists")
-            return False
         except Exception as e:
             logger.error(f"Error adding category: {e}")
             return False
