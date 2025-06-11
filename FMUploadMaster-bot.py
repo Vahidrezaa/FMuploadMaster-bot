@@ -29,7 +29,7 @@ from datetime import datetime
 
 import psycopg2 
 from psycopg2 import sql 
-
+from flask import Flask
 # بارگذاری متغیرهای محیطی
 load_dotenv()
 
@@ -1098,6 +1098,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main():
     """اجرای ربات"""
+    import threading
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
     application = Application.builder().token(BOT_TOKEN).build()
     
     # دستورات اصلی
@@ -1146,5 +1149,15 @@ def main():
     logger.info("ربات در حال اجرا...")
     application.run_polling()
 
+    # ایجاد یک وب سرور ساده برای Render
+    web_app = Flask(__name__)
+
+    @web_app.route('/')
+    def health_check():
+        return "Bot is running!", 200
+
+    def run_web_server():
+        web_app.run(host='0.0.0.0', port=10000)
+    
 if __name__ == '__main__':
     main()
