@@ -136,11 +136,6 @@ class DatabaseManager:
                     )
                 ''')
                 
-                cursor.execute('''
-                    ALTER TABLE categories 
-                    ALTER COLUMN created_by TYPE BIGINT USING created_by::BIGINT
-                ''')
-                
                 # ایجاد ایندکس‌ها برای بهبود کارایی
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_category ON files(category_id)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type)')
@@ -191,7 +186,7 @@ class DatabaseManager:
         try:
             self._execute_with_retry('''
                 INSERT INTO categories (id, name, created_by)
-                VALUES (%s, %s, %s)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
             ''', (category_id, name, str(created_by)))
             return True
         except Exception as e:
