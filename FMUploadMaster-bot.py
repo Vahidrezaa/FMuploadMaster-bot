@@ -103,7 +103,7 @@ class DatabaseManager:
                     CREATE TABLE IF NOT EXISTS categories (
                         id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
-                        created_by TEXT NOT NULL,
+                        created_by BIGINT NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         CONSTRAINT categories_name_unique UNIQUE(name)
                     )
@@ -134,6 +134,11 @@ class DatabaseManager:
                         invite_link TEXT NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
+                ''')
+                
+                cursor.execute('''
+                    ALTER TABLE categories 
+                    ALTER COLUMN created_by TYPE BIGINT USING created_by::BIGINT
                 ''')
                 
                 # ایجاد ایندکس‌ها برای بهبود کارایی
