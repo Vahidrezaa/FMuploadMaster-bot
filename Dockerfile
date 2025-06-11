@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "FMuploadMaster-bot.py"]
+CMD ["python", "FMUploadMaster-bot.py"]
