@@ -101,7 +101,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS categories (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
-                    created_by INTEGER NOT NULL,
+                    created_by BIGINT NOT NULL,
                     created_at TEXT NOT NULL
                 )
             ''')
