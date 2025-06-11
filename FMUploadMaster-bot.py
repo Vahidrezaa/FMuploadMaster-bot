@@ -1096,6 +1096,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # ============ LANCEMENT DU BOT ===========
 # =========================================
 
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def health_check():
+    return "Bot is running!", 200
+
+def run_web_server():
+    web_app.run(host='0.0.0.0', port=10000)
+
 def main():
     """اجرای ربات"""
     import threading
@@ -1149,15 +1158,5 @@ def main():
     logger.info("ربات در حال اجرا...")
     application.run_polling()
 
-    # ایجاد یک وب سرور ساده برای Render
-    web_app = Flask(__name__)
-
-    @web_app.route('/')
-    def health_check():
-        return "Bot is running!", 200
-
-    def run_web_server():
-        web_app.run(host='0.0.0.0', port=10000)
-    
 if __name__ == '__main__':
     main()
