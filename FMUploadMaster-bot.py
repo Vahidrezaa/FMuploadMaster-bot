@@ -86,157 +86,343 @@ except ValueError as e:
     exit(1)
 
 class DatabaseManager:
-    """مدیریت دیتابیس PostgreSQL"""
+    """مدیریت دیتابیس PostgreSQL بهینه شده"""
     
     def __init__(self):
         # اتصال به دیتابیس PostgreSQL
         self.conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+        self.conn.autocommit = False  # کنترل دستی commit
         self.init_database()
     
     def init_database(self):
-        """ایجاد جداول دیتابیس"""
-        with self.conn.cursor() as cursor:
-            # جدول دسته‌ها
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    created_by BIGINT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            ''')
-            
-            # جدول فایل‌ها
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS files (
-                    id SERIAL PRIMARY KEY,
-                    category_id TEXT NOT NULL,
-                    file_id TEXT NOT NULL,
-                    file_name TEXT NOT NULL,
-                    file_size INTEGER NOT NULL,
-                    file_type TEXT NOT NULL,
-                    caption TEXT,
-                    upload_date TEXT NOT NULL,
-                    FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
-                )
-            ''')
-            
-            # جدول کانال‌های اجباری
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS channels (
-                    id SERIAL PRIMARY KEY,
-                    channel_id TEXT NOT NULL UNIQUE,
-                    channel_name TEXT NOT NULL,
-                    invite_link TEXT NOT NULL
-                )
-            ''')
-            
-            self.conn.commit()
-            logger.info("Database initialized successfully")
+        """ایجاد جداول دیتابیس بهینه"""
+        try:
+            with self.conn.cursor() as cursor:
+                # جدول دسته‌ها
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS categories (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        created_by TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT categories_name_unique UNIQUE(name)
+                    )
+                ''')
+                
+                # جدول فایل‌ها
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS files (
+                        id SERIAL PRIMARY KEY,
+                        category_id TEXT NOT NULL,
+                        file_id TEXT NOT NULL UNIQUE,
+                        file_name TEXT NOT NULL,
+                        file_size BIGINT NOT NULL,
+                        file_type TEXT NOT NULL,
+                        caption TEXT,
+                        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT fk_category FOREIGN KEY (category_id) 
+                            REFERENCES categories (id) ON DELETE CASCADE
+                    )
+                ''')
+                
+                # جدول کانال‌های اجباری
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS channels (
+                        id SERIAL PRIMARY KEY,
+                        channel_id TEXT NOT NULL UNIQUE,
+                        channel_name TEXT NOT NULL,
+                        invite_link TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # ایجاد ایندکس‌ها برای بهبود کارایی
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_category ON files(category_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_created_by ON categories(created_by)')
+                
+                self.conn.commit()
+                logger.info("Database initialized successfully with optimizations")
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Error initializing database: {e}")
+            raise
+    
+    def _execute_with_retry(self, query: str, params: tuple = None, fetch: str = None):
+        """اجرای کوئری با مکانیزم retry"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with self.conn.cursor() as cursor:
+                    cursor.execute(query, params or ())
+                    
+                    if fetch == 'one':
+                        result = cursor.fetchone()
+                    elif fetch == 'all':
+                        result = cursor.fetchall()
+                    else:
+                        result = None
+                    
+                    self.conn.commit()
+                    return result
+                    
+            except psycopg2.OperationalError as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Database connection lost, retrying... ({attempt + 1}/{max_retries})")
+                    time.sleep(1)
+                    try:
+                        self.conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+                    except:
+                        pass
+                else:
+                    raise e
+            except Exception as e:
+                self.conn.rollback()
+                raise e
     
     # ---------- مدیریت دسته‌ها ----------
     def add_category(self, category_id: str, name: str, created_by: int) -> bool:
         """اضافه کردن دسته جدید"""
         try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('''
-                    INSERT INTO categories (id, name, created_by, created_at)
-                    VALUES (%s, %s, %s, %s)
-                ''', (category_id, name, created_by, datetime.now().isoformat()))
-                self.conn.commit()
-                return True
+            self._execute_with_retry('''
+                INSERT INTO categories (id, name, created_by)
+                VALUES (%s, %s, %s)
+            ''', (category_id, name, str(created_by)))
+            return True
+        except psycopg2.IntegrityError:
+            logger.warning(f"Category with name '{name}' already exists")
+            return False
         except Exception as e:
-            self.conn.rollback()
             logger.error(f"Error adding category: {e}")
             return False
     
     def get_categories(self) -> Dict[str, Dict]:
-        """دریافت تمام دسته‌ها"""
+        """دریافت تمام دسته‌ها با کش"""
         try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('SELECT * FROM categories')
-                categories = {}
+            # دریافت دسته‌ها
+            categories_data = self._execute_with_retry('''
+                SELECT id, name, created_by, created_at FROM categories
+                ORDER BY created_at DESC
+            ''', fetch='all')
+            
+            if not categories_data:
+                return {}
+            
+            categories = {}
+            category_ids = [cat[0] for cat in categories_data]
+            
+            # دریافت همه فایل‌ها در یک کوئری
+            if category_ids:
+                placeholders = ','.join(['%s'] * len(category_ids))
+                files_data = self._execute_with_retry(f'''
+                    SELECT category_id, file_id, file_name, file_size, file_type, caption 
+                    FROM files 
+                    WHERE category_id IN ({placeholders})
+                    ORDER BY upload_date ASC
+                ''', tuple(category_ids), fetch='all')
                 
-                for cat_data in cursor.fetchall():
-                    cat_id, name, created_by, created_at = cat_data
-                    
-                    # دریافت فایل‌های هر دسته
-                    cursor.execute('''
-                        SELECT file_id, file_name, file_size, file_type, caption 
-                        FROM files WHERE category_id = %s
-                    ''', (cat_id,))
-                    files = [
-                        {
-                            'file_id': row[0],
-                            'file_name': row[1],
-                            'file_size': row[2],
-                            'file_type': row[3],
-                            'caption': row[4] or ''
-                        } for row in cursor.fetchall()
-                    ]
-                    
-                    categories[cat_id] = {
-                        'name': name,
-                        'files': files,
-                        'created_by': created_by,
-                        'created_at': created_at
-                    }
-                
-                return categories
+                # گروه‌بندی فایل‌ها بر اساس category_id
+                files_by_category = {}
+                for file_data in files_data or []:
+                    cat_id = file_data[0]
+                    if cat_id not in files_by_category:
+                        files_by_category[cat_id] = []
+                    files_by_category[cat_id].append({
+                        'file_id': file_data[1],
+                        'file_name': file_data[2],
+                        'file_size': file_data[3],
+                        'file_type': file_data[4],
+                        'caption': file_data[5] or ''
+                    })
+            else:
+                files_by_category = {}
+            
+            # ساخت نتیجه نهایی
+            for cat_data in categories_data:
+                cat_id, name, created_by, created_at = cat_data
+                categories[cat_id] = {
+                    'name': name,
+                    'files': files_by_category.get(cat_id, []),
+                    'created_by': int(created_by),
+                    'created_at': str(created_at)
+                }
+            
+            return categories
+            
         except Exception as e:
-            self.conn.rollback()
             logger.error(f"Error retrieving categories: {e}")
             return {}
     
     def get_category(self, category_id: str) -> Optional[Dict]:
         """دریافت یک دسته خاص"""
         try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('SELECT * FROM categories WHERE id = %s', (category_id,))
-                cat_data = cursor.fetchone()
-                
-                if not cat_data:
-                    return None
-                
-                cat_id, name, created_by, created_at = cat_data
-                
-                # دریافت فایل‌های دسته
-                cursor.execute('''
-                    SELECT file_id, file_name, file_size, file_type, caption 
-                    FROM files WHERE category_id = %s
-                ''', (cat_id,))
-                files = [
-                    {
-                        'file_id': row[0],
-                        'file_name': row[1],
-                        'file_size': row[2],
-                        'file_type': row[3],
-                        'caption': row[4] or ''
-                    } for row in cursor.fetchall()
-                ]
-                
-                return {
-                    'name': name,
-                    'files': files,
-                    'created_by': created_by,
-                    'created_at': created_at
-                }
+            # دریافت اطلاعات دسته
+            cat_data = self._execute_with_retry('''
+                SELECT name, created_by, created_at FROM categories WHERE id = %s
+            ''', (category_id,), fetch='one')
+            
+            if not cat_data:
+                return None
+            
+            name, created_by, created_at = cat_data
+            
+            # دریافت فایل‌های دسته
+            files_data = self._execute_with_retry('''
+                SELECT file_id, file_name, file_size, file_type, caption 
+                FROM files 
+                WHERE category_id = %s 
+                ORDER BY upload_date ASC
+            ''', (category_id,), fetch='all')
+            
+            files = [
+                {
+                    'file_id': row[0],
+                    'file_name': row[1],
+                    'file_size': row[2],
+                    'file_type': row[3],
+                    'caption': row[4] or ''
+                } for row in (files_data or [])
+            ]
+            
+            return {
+                'name': name,
+                'files': files,
+                'created_by': int(created_by),
+                'created_at': str(created_at)
+            }
+            
         except Exception as e:
-            self.conn.rollback()
             logger.error(f"Error retrieving category: {e}")
             return None
     
     def delete_category(self, category_id: str) -> bool:
-        """حذف دسته"""
+        """حذف دسته (CASCADE خودکار فایل‌ها را حذف می‌کند)"""
+        try:
+            self._execute_with_retry('''
+                DELETE FROM categories WHERE id = %s
+            ''', (category_id,))
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting category: {e}")
+            return False
+
+    # ---------- مدیریت فایل‌ها ----------
+    def add_file_to_category(self, category_id: str, file_info: Dict) -> bool:
+        """اضافه کردن فایل به دسته"""
+        try:
+            self._execute_with_retry('''
+                INSERT INTO files (category_id, file_id, file_name, file_size, file_type, caption)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (
+                category_id,
+                file_info['file_id'],
+                file_info['file_name'],
+                file_info['file_size'],
+                file_info['file_type'],
+                file_info.get('caption', '')
+            ))
+            return True
+        except psycopg2.IntegrityError:
+            logger.warning(f"File {file_info['file_id']} already exists")
+            return False
+        except Exception as e:
+            logger.error(f"Error adding file: {e}")
+            return False
+    
+    def add_files_to_category(self, category_id: str, files: List[Dict]) -> bool:
+        """اضافه کردن چندین فایل به دسته (Batch Insert)"""
         try:
             with self.conn.cursor() as cursor:
-                cursor.execute('DELETE FROM files WHERE category_id = %s', (category_id,))
-                cursor.execute('DELETE FROM categories WHERE id = %s', (category_id,))
+                # استفاده از executemany برای بهبود کارایی
+                cursor.executemany('''
+                    INSERT INTO files (category_id, file_id, file_name, file_size, file_type, caption)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (file_id) DO NOTHING
+                ''', [
+                    (
+                        category_id,
+                        file_info['file_id'],
+                        file_info['file_name'],
+                        file_info['file_size'],
+                        file_info['file_type'],
+                        file_info.get('caption', '')
+                    ) for file_info in files
+                ])
                 self.conn.commit()
                 return True
         except Exception as e:
-            self.conn.commit.rollback()
-            logger.error(f"Error deleting category: {e}")
+            self.conn.rollback()
+            logger.error(f"Error adding files: {e}")
+            return False
+    
+    def delete_file(self, category_id: str, file_index: int) -> bool:
+        """حذف فایل از دسته"""
+        try:
+            with self.conn.cursor() as cursor:
+                # دریافت file_id بر اساس ایندکس
+                cursor.execute('''
+                    SELECT id FROM files 
+                    WHERE category_id = %s 
+                    ORDER BY upload_date ASC
+                    LIMIT 1 OFFSET %s
+                ''', (category_id, file_index))
+                
+                result = cursor.fetchone()
+                if result:
+                    cursor.execute('DELETE FROM files WHERE id = %s', (result[0],))
+                    self.conn.commit()
+                    return True
+                return False
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Error deleting file: {e}")
+            return False
+
+    # ---------- مدیریت کانال‌های اجباری ----------
+    def add_channel(self, channel_id: str, channel_name: str, invite_link: str) -> bool:
+        """اضافه کردن کانال اجباری"""
+        try:
+            self._execute_with_retry('''
+                INSERT INTO channels (channel_id, channel_name, invite_link)
+                VALUES (%s, %s, %s)
+            ''', (channel_id, channel_name, invite_link))
+            return True
+        except psycopg2.IntegrityError:
+            logger.warning(f"Channel {channel_id} already exists")
+            return False
+        except Exception as e:
+            logger.error(f"Error adding channel: {e}")
+            return False
+    
+    def get_channels(self) -> List[Dict]:
+        """دریافت لیست کانال‌های اجباری"""
+        try:
+            channels_data = self._execute_with_retry('''
+                SELECT channel_id, channel_name, invite_link 
+                FROM channels 
+                ORDER BY created_at ASC
+            ''', fetch='all')
+            
+            return [
+                {
+                    'channel_id': row[0],
+                    'channel_name': row[1],
+                    'invite_link': row[2]
+                } for row in (channels_data or [])
+            ]
+        except Exception as e:
+            logger.error(f"Error retrieving channels: {e}")
+            return []
+    
+    def delete_channel(self, channel_id: str) -> bool:
+        """حذف کانال اجباری"""
+        try:
+            self._execute_with_retry('''
+                DELETE FROM channels WHERE channel_id = %s
+            ''', (channel_id,))
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting channel: {e}")
             return False
 
     # ---------- مدیریت فایل‌ها ----------
