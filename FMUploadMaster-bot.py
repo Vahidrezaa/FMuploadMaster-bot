@@ -181,17 +181,17 @@ class DatabaseManager:
                 raise e
     
     # ---------- مدیریت دسته‌ها ----------
-    def add_category(self, category_id: str, name: str, created_by: int) -> bool:
-        """اضافه کردن دسته جدید"""
-        try:
-            self._execute_with_retry('''
-                INSERT INTO categories (id, name, created_by)
-                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-            ''', (category_id, name, str(created_by)))
-            return True
-        except Exception as e:
-            logger.error(f"Error adding category: {e}")
-            return False
+def add_category(self, category_id: str, name: str, created_by: int) -> bool:
+    """اضافه کردن دسته جدید"""
+    try:
+        self._execute_with_retry('''
+            INSERT INTO categories (id, name, created_by)
+            VALUES (%s, %s, %s)
+        ''', (category_id, name, created_by))
+        return True
+    except Exception as e:
+        logger.error(f"Error adding category: {e}")
+        return False
     
     def get_categories(self) -> Dict[str, Dict]:
         """دریافت تمام دسته‌ها با کش"""
@@ -512,7 +512,7 @@ class DatabaseManager:
             logger.warning(f"Channel {channel_id} already exists")
             return False
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error adding channel: {e}")
             return False
     
@@ -529,7 +529,7 @@ class DatabaseManager:
                     } for row in cursor.fetchall()
                 ]
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error retrieving channels: {e}")
             return []
     
@@ -541,7 +541,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error deleting channel: {e}")
             return False
 
