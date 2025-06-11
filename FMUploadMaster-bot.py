@@ -146,6 +146,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error adding category: {e}")
             return False
     
@@ -183,6 +184,7 @@ class DatabaseManager:
                 
                 return categories
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error retrieving categories: {e}")
             return {}
     
@@ -220,6 +222,7 @@ class DatabaseManager:
                     'created_at': created_at
                 }
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error retrieving category: {e}")
             return None
     
@@ -232,6 +235,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error deleting category: {e}")
             return False
 
@@ -257,6 +261,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error adding file: {e}")
             return False
     
@@ -283,6 +288,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error adding files: {e}")
             return False
     
@@ -304,6 +310,7 @@ class DatabaseManager:
                     return True
                 return False
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error deleting file: {e}")
             return False
 
@@ -322,6 +329,7 @@ class DatabaseManager:
             logger.warning(f"Channel {channel_id} already exists")
             return False
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error adding channel: {e}")
             return False
     
@@ -338,6 +346,7 @@ class DatabaseManager:
                     } for row in cursor.fetchall()
                 ]
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error retrieving channels: {e}")
             return []
     
@@ -349,6 +358,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
+            self.conn.commit.rollback()
             logger.error(f"Error deleting channel: {e}")
             return False
 
