@@ -181,17 +181,17 @@ class DatabaseManager:
                 raise e
     
     # ---------- مدیریت دسته‌ها ----------
-def add_category(self, category_id: str, name: str, created_by: int) -> bool:
-    """اضافه کردن دسته جدید"""
-    try:
-        self._execute_with_retry('''
-            INSERT INTO categories (id, name, created_by)
-            VALUES (%s, %s, %s)
-        ''', (category_id, name, created_by))
-        return True
-    except Exception as e:
-        logger.error(f"Error adding category: {e}")
-        return False
+    def add_category(self, category_id: str, name: str, created_by: int) -> bool:
+        """اضافه کردن دسته جدید"""
+        try:
+            self._execute_with_retry('''
+                INSERT INTO categories (id, name, created_by)
+                VALUES (%s, %s, %s)
+            ''', (category_id, name, created_by))
+            return True
+        except Exception as e:
+            logger.error(f"Error adding category: {e}")
+            return False
     
     def get_categories(self) -> Dict[str, Dict]:
         """دریافت تمام دسته‌ها با کش"""
@@ -419,129 +419,6 @@ def add_category(self, category_id: str, name: str, created_by: int) -> bool:
             ''', (channel_id,))
             return True
         except Exception as e:
-            logger.error(f"Error deleting channel: {e}")
-            return False
-
-    # ---------- مدیریت فایل‌ها ----------
-    def add_file_to_category(self, category_id: str, file_info: Dict) -> bool:
-        """اضافه کردن فایل به دسته"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('''
-                    INSERT INTO files (
-                        category_id, file_id, file_name, 
-                        file_size, file_type, caption, upload_date
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ''', (
-                    category_id,
-                    file_info['file_id'],
-                    file_info['file_name'],
-                    file_info['file_size'],
-                    file_info['file_type'],
-                    file_info.get('caption', ''),
-                    datetime.now().isoformat()
-                ))
-                self.conn.commit()
-                return True
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Error adding file: {e}")
-            return False
-    
-    def add_files_to_category(self, category_id: str, files: List[Dict]) -> bool:
-        """اضافه کردن چندین فایل به دسته"""
-        try:
-            with self.conn.cursor() as cursor:
-                upload_date = datetime.now().isoformat()
-                for file_info in files:
-                    cursor.execute('''
-                        INSERT INTO files (
-                            category_id, file_id, file_name, 
-                            file_size, file_type, caption, upload_date
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ''', (
-                        category_id,
-                        file_info['file_id'],
-                        file_info['file_name'],
-                        file_info['file_size'],
-                        file_info['file_type'],
-                        file_info.get('caption', ''),
-                        upload_date
-                    ))
-                self.conn.commit()
-                return True
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Error adding files: {e}")
-            return False
-    
-    def delete_file(self, category_id: str, file_index: int) -> bool:
-        """حذف فایل از دسته"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('''
-                    SELECT id FROM files 
-                    WHERE category_id = %s 
-                    ORDER BY id
-                ''', (category_id,))
-                file_ids = cursor.fetchall()
-                
-                if file_index < len(file_ids):
-                    file_id = file_ids[file_index][0]
-                    cursor.execute('DELETE FROM files WHERE id = %s', (file_id,))
-                    self.conn.commit()
-                    return True
-                return False
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Error deleting file: {e}")
-            return False
-
-    # ---------- مدیریت کانال‌های اجباری ----------
-    def add_channel(self, channel_id: str, channel_name: str, invite_link: str) -> bool:
-        """اضافه کردن کانال اجباری"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('''
-                    INSERT INTO channels (channel_id, channel_name, invite_link)
-                    VALUES (%s, %s, %s)
-                ''', (channel_id, channel_name, invite_link))
-                self.conn.commit()
-                return True
-        except psycopg2.IntegrityError:
-            logger.warning(f"Channel {channel_id} already exists")
-            return False
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Error adding channel: {e}")
-            return False
-    
-    def get_channels(self) -> List[Dict]:
-        """دریافت لیست کانال‌های اجباری"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('SELECT channel_id, channel_name, invite_link FROM channels')
-                return [
-                    {
-                        'channel_id': row[0],
-                        'channel_name': row[1],
-                        'invite_link': row[2]
-                    } for row in cursor.fetchall()
-                ]
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Error retrieving channels: {e}")
-            return []
-    
-    def delete_channel(self, channel_id: str) -> bool:
-        """حذف کانال اجباری"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute('DELETE FROM channels WHERE channel_id = %s', (channel_id,))
-                self.conn.commit()
-                return True
-        except Exception as e:
-            self.conn.rollback()
             logger.error(f"Error deleting channel: {e}")
             return False
 
