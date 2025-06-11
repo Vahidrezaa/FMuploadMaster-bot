@@ -146,7 +146,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error adding category: {e}")
             return False
     
@@ -184,7 +184,7 @@ class DatabaseManager:
                 
                 return categories
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error retrieving categories: {e}")
             return {}
     
@@ -222,7 +222,7 @@ class DatabaseManager:
                     'created_at': created_at
                 }
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error retrieving category: {e}")
             return None
     
@@ -261,7 +261,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error adding file: {e}")
             return False
     
@@ -288,7 +288,7 @@ class DatabaseManager:
                 self.conn.commit()
                 return True
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error adding files: {e}")
             return False
     
@@ -310,7 +310,7 @@ class DatabaseManager:
                     return True
                 return False
         except Exception as e:
-            self.conn.commit.rollback()
+            self.conn.rollback()
             logger.error(f"Error deleting file: {e}")
             return False
 
