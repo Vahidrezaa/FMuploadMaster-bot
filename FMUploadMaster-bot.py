@@ -1,3 +1,4 @@
+import time
 import logging
 import json
 import uuid
@@ -185,8 +186,8 @@ class DatabaseManager:
         """اضافه کردن دسته جدید"""
         try:
             self._execute_with_retry('''
-                INSERT INTO categories (id, name, created_by)
-                VALUES (%s, %s, %s)
+                INSERT INTO categories (id, name, created_by, created_at)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
             ''', (category_id, name, created_by))
             return True
         except Exception as e:
