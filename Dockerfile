@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN pip install flask==2.3.2
+
 COPY . .
+
+EXPOSE 10000
 
 CMD ["python", "FMUploadMaster-bot.py"]
