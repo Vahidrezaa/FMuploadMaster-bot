@@ -121,6 +121,7 @@ class DatabaseManager:
                         file_type TEXT NOT NULL,
                         caption TEXT,
                         upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT files_file_id_unique UNIQUE (file_id),
                         CONSTRAINT fk_category FOREIGN KEY (category_id) 
                             REFERENCES categories (id) ON DELETE CASCADE
                     )
@@ -335,7 +336,7 @@ class DatabaseManager:
                 cursor.executemany('''
                     INSERT INTO files (category_id, file_id, file_name, file_size, file_type, caption)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (file_id) DO NOTHING
+                    ON CONFLICT ON CONSTRAINT files_file_id_unique DO NOTHING
                 ''', [
                     (
                         category_id,
